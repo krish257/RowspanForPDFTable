@@ -1,0 +1,528 @@
+using System.IO;
+using iTextSharp.text;
+using iTextSharp.text.pdf;
+
+class Program
+{
+    static void Main()
+    {
+        //string htmlString = @"
+        //    <table border='1'>
+        //        <tr>
+        //            <th>Name</th>
+        //            <th>Age</th>
+        //        </tr>
+        //        <tr>
+        //            <td>John Doe</td>
+        //            <td>30</td>
+        //        </tr>
+        //        <tr>
+        //            <td>Jane Doe</td>
+        //            <td>25</td>
+        //        </tr>
+        //    </table>
+        //";
+        // Create a document
+        Document document = new Document();
+        string pdfPath = "ExamplePDFWithDynamicRowspan.pdf";
+
+        // Create a PdfWriter instance
+        PdfWriter.GetInstance(document, new FileStream(pdfPath, FileMode.Create));
+        document.Open();
+        // Create a table with 3 columns
+        PdfPTable table = new PdfPTable(3);
+        table.WidthPercentage = 100;
+
+        // Add header row
+        table.AddCell("Name");
+        table.AddCell("Email");
+        table.AddCell("Position");
+
+        // Add some data rows
+        table.AddCell("John Doe");
+        table.AddCell("john.doe@example.com");
+        table.AddCell("Manager");
+
+        table.AddCell("John Doe");
+        table.AddCell("john.doe@example.com");
+        table.AddCell("Manager");
+
+        table.AddCell("Jane Smith");
+        table.AddCell("jane.smith@example.com");
+        table.AddCell("Designer");
+
+        table.AddCell("Alice Johnson");
+        table.AddCell("alice.johnson@example.com");
+        table.AddCell("Designer");
+
+        table.AddCell("Alice Johnson");
+        table.AddCell("bob.brown@example.com");
+        table.AddCell("Analyst");
+        document.Add(table);
+        document.Add(new Paragraph("\n"));
+
+        // Modify the table to add row spans for duplicate values
+        List<int> columnsToSpan = new List<int> { 2 };
+        PdfPTable modifiedTable = AddRowspanForAllColumns(table);
+  
+
+        // Add the modified table to the document
+        document.Add(modifiedTable);
+
+        // Close the document
+        document.Close();
+
+        Console.WriteLine("PDF created with dynamic rowspan successfully.");
+    }
+
+    // Method to dynamically add row spans for duplicate values across all columns
+    // Method to dynamically add row spans for duplicate values across all columns
+    public static PdfPTable AddRowspanForAllColumns1(PdfPTable table)
+    {
+        // Dictionary to track occurrences of cell values with their respective row indices
+        Dictionary<string, List<int>> valueRowIndices = new Dictionary<string, List<int>>();
+        int totalRows = table.Rows.Count;
+
+        // Populate the dictionary with cell values and their row indices
+        for (int rowIndex = 1; rowIndex < totalRows; rowIndex++) // Start from 1 to skip header
+        {
+            for (int colIndex = 0; colIndex < table.NumberOfColumns; colIndex++)
+            {
+                PdfPCell cell = table.GetRow(rowIndex).GetCells()[colIndex];
+                string cellValue = cell.Phrase.Content;
+
+                if (!valueRowIndices.ContainsKey(cellValue))
+                {
+                    valueRowIndices[cellValue] = new List<int>();
+                }
+                valueRowIndices[cellValue].Add(rowIndex);
+            }
+        }
+
+        // Create a new table to hold the modified rows
+        PdfPTable newTable = new PdfPTable(table.NumberOfColumns);
+        newTable.WidthPercentage = 100;
+
+        // Add the header row to the new table
+        foreach (PdfPCell headerCell in table.GetRow(0).GetCells())
+        {
+            newTable.AddCell(headerCell);
+        }
+
+        // Track which rows have been processed to avoid duplicates
+        HashSet<int> processedRows = new HashSet<int>();
+
+        // Iterate through each unique value and its indices
+        foreach (var kvp in valueRowIndices)
+        {
+            string currentValue = kvp.Key;
+            List<int> rowIndices = kvp.Value;
+
+            // If there's more than one occurrence, we need to add rowspan
+            if (rowIndices.Count > 1)
+            {
+                // Create a rowspan cell for the first occurrence
+                int firstRowIndex = rowIndices[0];
+                PdfPCell rowspanCell = new PdfPCell(new Phrase(currentValue))
+                {
+                    Rowspan = rowIndices.Count
+                };
+
+                // Add the rowspan cell to the new table
+                newTable.AddCell(rowspanCell);
+
+                // Get the cells for the first row and add them, skipping the first column
+                PdfPCell[] firstRowCells = table.GetRow(firstRowIndex).GetCells();
+                for (int j = 1; j < firstRowCells.Length; j++)
+                {
+                    newTable.AddCell(firstRowCells[j]); // Add the rest of the cells from the first row
+                }
+
+                // Mark the first row as processed
+                processedRows.Add(firstRowIndex);
+
+                // Handle the subsequent rows with the same value
+                for (int i = 1; i < rowIndices.Count; i++)
+                {
+                    int currentRowIndex = rowIndices[i];
+                    processedRows.Add(currentRowIndex);
+
+                    // Add empty cells for the first column
+                    newTable.AddCell(""); // Placeholder for rowspan in the first column
+
+                    // Add the remaining cells from the current row
+                    PdfPCell[] currentRowCells = table.GetRow(currentRowIndex).GetCells();
+                    for (int j = 1; j < currentRowCells.Length; j++)
+                    {
+                        newTable.AddCell(currentRowCells[j]); // Add remaining cells normally
+                    }
+                }
+            }
+            else
+            {
+                // If there's no duplicate, just add the row normally
+                foreach (var rowIndex in rowIndices)
+                {
+                    if (!processedRows.Contains(rowIndex))
+                    {
+                        PdfPCell[] originalCells = table.GetRow(rowIndex).GetCells();
+                        foreach (var cell in originalCells)
+                        {
+                            newTable.AddCell(cell);
+                        }
+                    }
+                }
+            }
+        }
+
+        return newTable;
+    }
+
+    // Method to dynamically add row spans for duplicate values in the first column
+    public static PdfPTable AddRowspanForDuplicateValues(PdfPTable table)
+    {
+        // Create a dictionary to track occurrences of cell values
+        Dictionary<string, List<int>> valueRowIndices = new Dictionary<string, List<int>>();
+        int totalRows = table.Rows.Count;
+
+        // Iterate through the rows of the table
+        for (int rowIndex = 1; rowIndex < totalRows; rowIndex++) // Start from 1 to skip header
+        {
+            PdfPCell cell = table.GetRow(rowIndex).GetCells()[0]; // Assuming we're checking the first column
+            string cellValue = cell.Phrase.Content;
+
+            // Add the row index to the list for this cell value
+            if (!valueRowIndices.ContainsKey(cellValue))
+            {
+                valueRowIndices[cellValue] = new List<int>();
+            }
+            valueRowIndices[cellValue].Add(rowIndex);
+        }
+
+        // Create a new table to hold the modified rows
+        PdfPTable newTable = new PdfPTable(table.NumberOfColumns);
+        newTable.WidthPercentage = 100;
+
+        // Add the header row to the new table
+        foreach (PdfPCell headerCell in table.GetRow(0).GetCells())
+        {
+            newTable.AddCell(headerCell);
+        }
+
+        // To keep track of rows that have been processed
+        HashSet<int> processedRows = new HashSet<int>();
+
+        // Iterate through each unique value and its indices
+        foreach (var kvp in valueRowIndices)
+        {
+            string currentValue = kvp.Key;
+            List<int> rowIndices = kvp.Value;
+
+            // If there's more than one occurrence, we need to add rowspan
+            if (rowIndices.Count > 1)
+            {
+                // Create a rowspan cell
+                PdfPCell rowspanCell = new PdfPCell(new Phrase(currentValue))
+                {
+                    Rowspan = rowIndices.Count
+                };
+
+                // Add the rowspan cell for the first occurrence
+                newTable.AddCell(rowspanCell);
+
+                // Add the remaining cells for the first row
+                foreach (int rowIndex in rowIndices)
+                {
+                    if (processedRows.Contains(rowIndex)) continue; // Skip if already processed
+
+                    PdfPCell[] originalCells = table.GetRow(rowIndex).GetCells();
+
+                    // Add the other cells, skipping the first column for the rowspan cell
+                    for (int colIndex = 1; colIndex < table.NumberOfColumns; colIndex++)
+                    {
+                        newTable.AddCell(originalCells[colIndex]);
+                    }
+
+                    // Mark this row as processed
+                    processedRows.Add(rowIndex);
+                }
+            }
+            else
+            {
+                // If there's no duplicate, just add the row normally
+                foreach (int rowIndex in rowIndices)
+                {
+                    PdfPCell[] originalCells = table.GetRow(rowIndex).GetCells();
+                    foreach (var cell in originalCells)
+                    {
+                        newTable.AddCell(cell);
+                    }
+                }
+            }
+        }
+
+        return newTable;
+    }
+
+    public static PdfPTable AddRowspanForColumns(PdfPTable table, List<int> columnNumbers)
+    {
+        // Create a dictionary to track occurrences of cell values for each specified column
+        Dictionary<int, Dictionary<string, List<int>>> valueRowIndices = new Dictionary<int, Dictionary<string, List<int>>>();
+        int totalRows = table.Rows.Count;
+
+        // Initialize the dictionary for each column number
+        foreach (var columnNumber in columnNumbers)
+        {
+            valueRowIndices[columnNumber] = new Dictionary<string, List<int>>();
+        }
+
+        // Collect row indices for each specified column
+        for (int rowIndex = 1; rowIndex < totalRows; rowIndex++) // Start from 1 to skip header
+        {
+            foreach (var columnNumber in columnNumbers)
+            {
+                PdfPCell cell = table.GetRow(rowIndex).GetCells()[columnNumber];
+                string cellValue = cell.Phrase.Content;
+
+                // Add the row index to the list for this cell value
+                if (!valueRowIndices[columnNumber].ContainsKey(cellValue))
+                {
+                    valueRowIndices[columnNumber][cellValue] = new List<int>();
+                }
+                valueRowIndices[columnNumber][cellValue].Add(rowIndex);
+            }
+        }
+
+        // Create a new table to hold the modified rows
+        PdfPTable newTable = new PdfPTable(table.NumberOfColumns);
+        newTable.WidthPercentage = 100;
+
+        // Add the header row to the new table
+        foreach (PdfPCell headerCell in table.GetRow(0).GetCells())
+        {
+            newTable.AddCell(headerCell);
+        }
+
+        // To keep track of rows that have already been added
+        HashSet<int> processedRows = new HashSet<int>();
+
+        // Create a dictionary to manage rowspan cells for each specified column
+        Dictionary<int, PdfPCell> rowspanCells = new Dictionary<int, PdfPCell>();
+
+        // Process each specified column
+        foreach (var columnNumber in columnNumbers)
+        {
+            var columnValues = valueRowIndices[columnNumber];
+
+            foreach (var kvp in columnValues)
+            {
+                string currentValue = kvp.Key;
+                List<int> rowIndices = kvp.Value;
+
+                if (rowIndices.Count > 1)
+                {
+                    // Create a rowspan cell for the specified column
+                    PdfPCell rowspanCell = new PdfPCell(new Phrase(currentValue))
+                    {
+                        Rowspan = rowIndices.Count
+                    };
+
+                    // Add the rowspan cell only for the first row of this group
+                    bool firstRowProcessed = false;
+                    foreach (int rowIndex in rowIndices)
+                    {
+                        if (processedRows.Contains(rowIndex)) continue; // Skip if already processed
+
+                        PdfPCell[] originalCells = table.GetRow(rowIndex).GetCells();
+                        for (int colIndex = 0; colIndex < table.NumberOfColumns; colIndex++)
+                        {
+                            if (colIndex == columnNumber)
+                            {
+                                if (!firstRowProcessed)
+                                {
+                                    newTable.AddCell(rowspanCell);
+                                    firstRowProcessed = true;
+                                }
+                            }
+                            else
+                            {
+                                newTable.AddCell(originalCells[colIndex]);
+                            }
+                        }
+
+                        // Mark this row as processed
+                        processedRows.Add(rowIndex);
+                    }
+                }
+                else
+                {
+                    // If there's no duplicate, just add the row normally
+                    foreach (int rowIndex in rowIndices)
+                    {
+                        if (processedRows.Contains(rowIndex)) continue; // Skip if already processed
+
+                        PdfPCell[] originalCells = table.GetRow(rowIndex).GetCells();
+                        foreach (var cell in originalCells)
+                        {
+                            newTable.AddCell(cell);
+                        }
+
+                        // Mark this row as processed
+                        processedRows.Add(rowIndex);
+                    }
+                }
+            }
+        }
+
+        return newTable;
+    }
+    public static PdfPTable AddRowspanForAllColumns(PdfPTable table)
+    {
+        int totalRows = table.Rows.Count;
+        int totalColumns = table.NumberOfColumns;
+
+        // Create a dictionary to track occurrences of cell values for each column
+        Dictionary<string, List<int>> valueRowIndices = new Dictionary<string, List<int>>();
+
+        // Collect row indices for each cell value across all columns
+        for (int rowIndex = 1; rowIndex < totalRows; rowIndex++) // Start from 1 to skip header
+        {
+            for (int columnIndex = 0; columnIndex < totalColumns; columnIndex++)
+            {
+                PdfPCell cell = table.GetRow(rowIndex).GetCells()[columnIndex];
+                string cellValue = cell.Phrase.Content;
+
+                // Create a unique key for the cell value
+                string key = $"{columnIndex}:{cellValue}";
+
+                // Add the row index to the list for this cell value
+                if (!valueRowIndices.ContainsKey(key))
+                {
+                    valueRowIndices[key] = new List<int>();
+                }
+                valueRowIndices[key].Add(rowIndex);
+            }
+        }
+
+        // Create a new table to hold the modified rows
+        PdfPTable newTable = new PdfPTable(totalColumns);
+        newTable.WidthPercentage = 100;
+
+        // Add the header row to the new table
+        foreach (PdfPCell headerCell in table.GetRow(0).GetCells())
+        {
+            newTable.AddCell(headerCell);
+        }
+
+        // To keep track of rows that have already been added
+        HashSet<int> processedRows = new HashSet<int>();
+
+        // Process each unique cell value for all columns
+        foreach (var kvp in valueRowIndices)
+        {
+            List<int> rowIndices = kvp.Value;
+
+            if (rowIndices.Count > 1)
+            {
+                // Get the first row's index and the column index
+                int firstRowIndex = rowIndices[0];
+                int columnIndex = int.Parse(kvp.Key.Split(':')[0]); // Extract column index from key
+
+                PdfPCell rowspanCell = new PdfPCell(new Phrase(table.GetRow(firstRowIndex).GetCells()[columnIndex].Phrase.Content))
+                {
+                    Rowspan = rowIndices.Count
+                };
+
+                // Add cells for all rows in the group
+                bool firstRowProcessed = false;
+                foreach (int rowIndex in rowIndices)
+                {
+                    if (processedRows.Contains(rowIndex)) continue; // Skip if already processed
+
+                    PdfPCell[] originalCells = table.GetRow(rowIndex).GetCells();
+                    for (int colIndex = 0; colIndex < totalColumns; colIndex++)
+                    {
+                        if (colIndex == columnIndex)
+                        {
+                            if (!firstRowProcessed)
+                            {
+                                newTable.AddCell(rowspanCell);
+                                firstRowProcessed = true;
+                            }
+                        }
+                        else
+                        {
+                            newTable.AddCell(originalCells[colIndex]);
+                        }
+                    }
+
+                    // Mark this row as processed
+                    processedRows.Add(rowIndex);
+                }
+            }
+            else
+            {
+                // If there's no duplicate, just add the row normally
+                foreach (int rowIndex in rowIndices)
+                {
+                    if (processedRows.Contains(rowIndex)) continue; // Skip if already processed
+
+                    PdfPCell[] originalCells = table.GetRow(rowIndex).GetCells();
+                    foreach (var cell in originalCells)
+                    {
+                        newTable.AddCell(cell);
+                    }
+
+                    // Mark this row as processed
+                    processedRows.Add(rowIndex);
+                }
+            }
+        }
+
+        return newTable;
+    }
+
+    public static void ConvertHtmlTableToPdfManual(string htmlString, string pdfFilePath)
+    {
+        using (FileStream stream = new FileStream(pdfFilePath, FileMode.Create))
+        {
+            Document pdfDoc = new Document();
+            PdfWriter writer = PdfWriter.GetInstance(pdfDoc, stream);
+            pdfDoc.Open();
+
+            // Parse HTML string
+            StringReader sr = new StringReader(htmlString);
+
+            // Create PdfPTable
+            PdfPTable table = new PdfPTable(2); // Number of columns
+            table.WidthPercentage = 100;
+
+            // Add header row
+            PdfPCell headerCell = new PdfPCell(new Phrase("Name"));
+            table.AddCell(headerCell);
+            headerCell = new PdfPCell(new Phrase("Age"));
+            table.AddCell(headerCell);
+
+            // Add data rows
+            string[] lines = htmlString.Split('\n');
+            foreach (string line in lines)
+            {
+                if (line.Contains("<tr>"))
+                {
+                    string[] cells = line.Split(new string[] { "<td>" }, StringSplitOptions.None);
+                    for (int i = 1; i < cells.Length; i++)
+                    {
+                        cells[i] = cells[i].Replace("</td>", "");
+                        PdfPCell cell = new PdfPCell(new Phrase(cells[i]));
+                        table.AddCell(cell);
+                    }
+                }
+            }
+
+            // Add table to PDF
+            pdfDoc.Add(table);
+
+            pdfDoc.Close();
+        }
+    }
+}
